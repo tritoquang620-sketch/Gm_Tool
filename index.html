@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tool GM">
+  <meta name="theme-color" content="#0f172a">
+  <title>ASN TOOL GM EXPORT</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="wrap">
+    <section class="card">
+      <h1>ASN TOOL GM EXPORT</h1>
+      <p class="sub">Upload nhiều file PDF, nhận diện Item 9 số, Rev 01-09, Quantity đúng cột, Line No đúng cột cuối và xuất Excel.</p>
+      <form id="uploadForm" action="/export" method="post" enctype="multipart/form-data">
+        <label class="dropzone">
+          <input id="files" type="file" name="files" accept="application/pdf" multiple required>
+          <span>Chọn file PDF</span>
+          <small>Có thể chọn nhiều đơn cùng lúc</small>
+        </label>
+        <div id="fileList" class="file-list"></div>
+        <div class="actions">
+          <button type="button" id="btnCheck">Kiểm tra nhận dạng</button>
+          <button type="submit">Xuất Excel</button>
+        </div>
+      </form>
+      <div id="status" class="status"></div>
+      <div id="results"></div>
+    </section>
+  </main>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js').catch(() => {}));
+    }
+
+    const filesInput = document.getElementById('files');
+    const fileList = document.getElementById('fileList');
+    const statusBox = document.getElementById('status');
+    const resultsBox = document.getElementById('results');
+    const btnCheck = document.getElementById('btnCheck');
+
+    filesInput.addEventListener('change', () => {
+      fileList.innerHTML = Array.from(filesInput.files).map(f => `<div class="file-item">${f.name}</div>`).join('');
+      resultsBox.innerHTML = '';
+      statusBox.textContent = filesInput.files.length ? `Đã chọn ${filesInput.files.length} file.` : '';
+    });
+
+    btnCheck.addEventListener('click', async () => {
+      if (!filesInput.files.length) {
+        statusBox.textContent = 'Vui lòng chọn file PDF trước.';
+        return;
+      }
+      const formData = new FormData();
+      Array.from(filesInput.files).forEach(file => formData.append('files', file));
+      statusBox.textContent = 'Đang kiểm tra nhận dạng...';
+      resultsBox.innerHTML = '';
+      try {
+        const res = await fetch('/api/parse', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Có lỗi xảy ra');
+        statusBox.textContent = `Đã nhận dạng ${data.count} file.`;
+        resultsBox.innerHTML = data.results.map(r => `
+          <div class="result-card">
+            <h3>${r.asn_no}</h3>
+            <div>ETA: ${r.eta || ''}</div>
+            <div>Nhóm: ${r.group}</div>
+            <div>Tổng Quantity: ${r.total_quantity}</div>
+            <div>Tổng Thùng Chẵn: ${r.total_thung_chan}</div>
+            <div>Tổng PCS lẻ: ${r.total_pcs_le}</div>
+            <table>
+              <thead><tr><th>STT</th><th>Item</th><th>Rev</th><th>Qty</th><th>Packing</th><th>Thùng Chẵn</th><th>PCS lẻ</th><th>Line No</th></tr></thead>
+              <tbody>${r.items.map(i => `<tr><td>${i.seq}</td><td>${i.item}</td><td>${i.rev}</td><td>${i.quantity}</td><td>${i.packing}</td><td>${i.thung_chan}</td><td>${i.pcs_le}</td><td>${i.line_no}</td></tr>`).join('')}</tbody>
+            </table>
+          </div>
+        `).join('');
+      } catch (err) {
+        statusBox.textContent = err.message || 'Không kiểm tra được file.';
+      }
+    });
+  </script>
+</body>
+</html>
